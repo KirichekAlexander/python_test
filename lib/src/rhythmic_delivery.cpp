@@ -106,7 +106,7 @@ RhythmicResult solve_rhythmic_delivery(Vec const& p, double V0, double minV, dou
     for (int t = 0; t < n; ++t) {
 
         vecV[t] = x[t] - p[t] + (t == 0 ? V0 : vecV[t - 1]);
-        if (vecV[t] < minV or vecV[t] > maxV) {
+        if (vecV[t] < minV || vecV[t] > maxV) {
             ok = false;
         }
 
