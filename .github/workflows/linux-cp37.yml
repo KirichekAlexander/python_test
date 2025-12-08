@@ -1,0 +1,44 @@
+name: Build Linux wheel (cp37)
+
+on:
+  workflow_dispatch:
+  push:
+
+jobs:
+  linux_cp37:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheel (cp37) in manylinux2010
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/io" quay.io/pypa/manylinux2010_x86_64 bash -lc '
+            set -eux
+            ls -la /opt/python
+
+            PY=/opt/python/cp37-cp37m/bin/python
+            PIP=/opt/python/cp37-cp37m/bin/pip
+
+            $PY -V
+
+            # pip 24.1+ не поддерживает Python 3.7
+            $PIP install -U "pip<24.1" wheel build "ninja>=1.5"
+
+            # pybind11 3.x может не поддерживать Python 3.7
+            $PIP install -U "pybind11<3.0"
+
+            # scikit-build-core 0.11+ требует Python >= 3.8
+            $PIP install -U "scikit-build-core<0.11"
+
+            cd /io
+            $PY -m build --wheel --no-isolation
+
+            mkdir -p /io/wheelhouse
+            auditwheel repair dist/*.whl -w /io/wheelhouse
+          '
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-cp37-wheel
+          path: wheelhouse/*.whl
