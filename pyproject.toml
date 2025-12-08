@@ -5,7 +5,7 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "rhythmic-delivery"
 version = "0.1.0"
-requires-python = ">=3.9"
+requires-python = ">=3.7"
 
 
 [tool.cibuildwheel]
