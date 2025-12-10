@@ -5,14 +5,27 @@ p = [119.36, 123.86, 150.51, 162.69, 160.00, 158.05, 161.61, 149.99, 195.13, 188
 V0 = 128.81
 minV = 55.0
 maxV = 220.0
-res = rd.solve(p, V0, minV, maxV)
 
+# запуск итерационного метода
+# res = rd.solve_uniform_pg(p, V0, minV, maxV)
+# dx = 0.0
+# print("ok:", res.ok)
+# print("Mp:", res.Mp)
+# print("x :", res.x)
+# print("V :", res.V)
+# print("maxIter:", res.maxIter)
+# print("iters:", res.iters)
+# 
+
+
+# запуск прямого метода
+res = rd.solve_direct(p, V0, minV, maxV)
+dx = 0.08
 print("ok:", res.ok)
-print("Mp:", res.Mp)
 print("x :", res.x)
 print("V :", res.V)
-print("maxIter:", res.maxIter)
-print("Iters:", res.Iters)
+# 
+
 x = list(res.x)
 V = list(res.V)
 
@@ -25,12 +38,22 @@ maxV_line = [maxV] * T
 
 plt.figure(figsize=(10, 6))
 
-plt.plot(t, p, marker='s', fillstyle='none', linewidth=1.5, label='p')
-plt.plot(t, x, marker='s', fillstyle='none', linewidth=1.5, label='x')
-plt.plot(t, V, marker='s', fillstyle='none', linewidth=1.5, label='V')
+t_minus = [ti - dx for ti in t]
+t_plus  = [ti + dx for ti in t]
 
-plt.plot(t, minV_line, marker='s', fillstyle='none', linewidth=1.2, label='minV')
-plt.plot(t, maxV_line, marker='s', fillstyle='none', linewidth=1.2, label='maxV')
+lp, = plt.plot(t, p, linewidth=1.5, label='p')
+lx, = plt.plot(t, x, linewidth=1.5, label='x')
+lV, = plt.plot(t, V, linewidth=1.5, label='V')
+lmin, = plt.plot(t, minV_line, linewidth=1.2, label='minV')
+lmax, = plt.plot(t, maxV_line, linewidth=1.2, label='maxV')
+
+plt.plot(t_minus, p, marker='s', linestyle='None', fillstyle='none', color=lp.get_color())
+plt.plot(t_plus, x, marker='s', linestyle='None', fillstyle='none', color=lx.get_color())
+
+plt.plot(t_minus, V, marker='s', linestyle='None', fillstyle='none', color=lV.get_color())
+plt.plot(t_plus, minV_line, marker='s', linestyle='None', fillstyle='none', color=lmin.get_color())
+
+plt.plot(t, maxV_line, marker='s', linestyle='None', fillstyle='none', color=lmax.get_color())
 
 plt.xlabel('t')
 plt.ylabel('p, x, V, minV, maxV')

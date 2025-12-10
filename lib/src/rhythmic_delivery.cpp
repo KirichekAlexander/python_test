@@ -1,7 +1,28 @@
 #include "rhythmic_delivery.h"
 
+// реализация конструкторов для результатов
 
-// функция проекции вектора на многомерный куб задаваемый векторами lb, ub
+DeliveryResult::DeliveryResult(Vec const& x, Vec const& V, bool ok) 
+    : x(x)
+    , V(V)
+    , ok(ok)
+{
+}
+
+
+UniformityIterResult::UniformityIterResult(Vec const& x, Vec const& V, bool ok, double Mp, int maxIter, int iters) 
+    : DeliveryResult(x, V, ok)
+    , Mp(Mp)
+    , maxIter(maxIter)
+    , iters(iters)
+{
+}
+
+//
+
+
+// реализация итерационного метода 
+
 void clamp_vec(Vec& vec, Vec const& lb, Vec const& ub) {
 
     size_t vec_sz = vec.size();
@@ -15,10 +36,9 @@ void clamp_vec(Vec& vec, Vec const& lb, Vec const& ub) {
 }
 
 
+UniformityIterResult solve_rhythmic_delivery_uniform_pg(Vec const& p, double V0, double minV, double maxV) {
 
-RhythmicResult solve_rhythmic_delivery(Vec const& p, double V0, double minV, double maxV) {
-
-    size_t n = p.size(); // количество тактов поставок
+    const size_t n = p.size(); // количество тактов поставок
 
     Vec lb(n, 0.0); // вектор нижних границ
     Vec ub(n, 0.0); // вектор верхних границ
@@ -42,7 +62,7 @@ RhythmicResult solve_rhythmic_delivery(Vec const& p, double V0, double minV, dou
     bool ok = false;   // флаг того, что метод сошёлся и выполнено принадлежность границам
     // выбор eps
     double scale = 0.0;
-    for (size_t i = 0; i < lb.size(); ++i) {
+    for (size_t i = 0; i < n ; ++i) {
         scale = std::max(scale, ub[i] - lb[i]);
     }
     const double eps = 1e-10 * std::max(1.0, scale);
@@ -115,26 +135,54 @@ RhythmicResult solve_rhythmic_delivery(Vec const& p, double V0, double minV, dou
 
     Vec vecV(n, 0.0); // объёмы склада
 
-    if (ok) {
 
-        // проверка границ
-        for (int t = 0; t < n; ++t) {
+    // проверка границ
+    for (int t = 0; t < n; ++t) {
 
-            vecV[t] = x[t] - p[t] + (t == 0 ? V0 : vecV[t - 1]);
-            if (vecV[t] < minV || vecV[t] > maxV) {
-                ok = false;
-            }
-
+        vecV[t] = x[t] - p[t] + (t == 0 ? V0 : vecV[t - 1]);
+        if (vecV[t] < minV || vecV[t] > maxV) {
+            ok = false;
         }
-        //
 
     }
+    //
 
-    return RhythmicResult{x,
+
+    return UniformityIterResult{x,
                           vecV,
-                          Mp,
                           ok,
+                          Mp,
                           maxIter,
                           it};
 
 }
+//
+
+
+// реализация прямого метода
+DeliveryResult solve_rhythmic_delivery_bounds_direct(Vec const& p, double V0, double minV, double maxV) {
+
+    const size_t n = p.size(); // количество тактов
+    Vec x(n, 0.0);             // вектор поставок из РЦ в РС
+    Vec vecV(n, 0.0);          // вектор объёма ресурса на складе
+
+    bool ok = (V0 >= minV && V0 <= maxV); // флаг того, что критерий изначально выполнялся
+    double curV = V0;                     // текущий объём
+
+    for (size_t t = 0; t < n; ++t) {
+
+        // вычисление минимальной поставки, чтобы не выйти за нижнюю границу
+        const double need = minV - (curV - p[t]);
+        x[t] = std::max(0.0, need);               
+        //
+
+        vecV[t] = curV = curV + x[t] - p[t]; // вычисление текущего объёма
+        
+    }
+
+    return DeliveryResult{x,
+                          vecV,
+                          ok};
+
+}
+//
