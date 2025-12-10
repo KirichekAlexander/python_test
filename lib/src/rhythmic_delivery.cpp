@@ -39,9 +39,19 @@ RhythmicResult solve_rhythmic_delivery(Vec const& p, double V0, double minV, dou
 
 
     // метод проекции градиента
-    const int maxIter = 200000; // максимальное количество итераций
-    const double eps  = 1e-10;  // желаемая точность(критерий остановки)
-    double alpha      = 0.125;  // шаг метода
+    bool ok = false;   // флаг того, что метод сошёлся и выполнено принадлежность границам
+    // выбор eps
+    double scale = 0.0;
+    for (size_t i = 0; i < lb.size(); ++i) {
+        scale = std::max(scale, ub[i] - lb[i]);
+    }
+    const double eps = 1e-10 * std::max(1.0, scale);
+    //
+
+    // оценка порядка O(n^2 * log(scale/eps)); коэффициент с запасом
+    const int maxIter =static_cast<int>(std::ceil( 2.0 * (16.0 * n * n) / (M_PI * M_PI) * std::log(1e10)));
+
+    double alpha = 0.125;  // шаг метода 
 
 
     // код метода
@@ -61,7 +71,8 @@ RhythmicResult solve_rhythmic_delivery(Vec const& p, double V0, double minV, dou
 
 
     // градиентный спуск
-    for (int it = 0; it < maxIter; ++it) {
+    int it = 0;
+    for (; it < maxIter; ++it) {
 
         // вычисление r[t]
         r[0] = y[0] - Mp;
@@ -85,7 +96,10 @@ RhythmicResult solve_rhythmic_delivery(Vec const& p, double V0, double minV, dou
 
         // критерий остановки
         if (maxDiff < eps) {
+
+            ok = true;
             break;
+
         }
 
     }
@@ -100,22 +114,27 @@ RhythmicResult solve_rhythmic_delivery(Vec const& p, double V0, double minV, dou
     //
 
     Vec vecV(n, 0.0); // объёмы склада
-    bool ok = true;   // флаг того, что границы были соблюдены
 
-    // проверка границ
-    for (int t = 0; t < n; ++t) {
+    if (ok) {
 
-        vecV[t] = x[t] - p[t] + (t == 0 ? V0 : vecV[t - 1]);
-        if (vecV[t] < minV || vecV[t] > maxV) {
-            ok = false;
+        // проверка границ
+        for (int t = 0; t < n; ++t) {
+
+            vecV[t] = x[t] - p[t] + (t == 0 ? V0 : vecV[t - 1]);
+            if (vecV[t] < minV || vecV[t] > maxV) {
+                ok = false;
+            }
+
         }
+        //
 
     }
-    //
 
     return RhythmicResult{x,
                           vecV,
                           Mp,
-                          ok};
+                          ok,
+                          maxIter,
+                          it};
 
 }

@@ -8,7 +8,6 @@
 
 
 using Vec = std::vector<double>; // синоним для вещественного вектора
-using Matrix = std::vector<Vec>; // синоним для вещественной матрицы
 
 
 Vec operator-(Vec const& vec1, Vec const& vec2); // оператор вычитания векторов

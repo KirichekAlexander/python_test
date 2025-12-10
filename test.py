@@ -11,6 +11,8 @@ print("ok:", res.ok)
 print("Mp:", res.Mp)
 print("x :", res.x)
 print("V :", res.V)
+print("maxIter:", res.maxIter)
+print("Iters:", res.Iters)
 x = list(res.x)
 V = list(res.V)
 

@@ -9,6 +9,8 @@ struct RhythmicResult {
     Vec V;
     double Mp;
     bool ok;
+    int maxIter;
+    int Iters;
 };
 
 
