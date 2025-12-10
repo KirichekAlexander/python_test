@@ -49,7 +49,7 @@ RhythmicResult solve_rhythmic_delivery(Vec const& p, double V0, double minV, dou
     //
 
     // оценка порядка O(n^2 * log(scale/eps)); коэффициент с запасом
-    const int maxIter =static_cast<int>(std::ceil( 2.0 * (16.0 * n * n) / (M_PI * M_PI) * std::log(1e10)));
+    const int maxIter =static_cast<int>(std::ceil( 2.0 * (16.0 * n * n) / (pi * pi) * std::log(1e10)));
 
     double alpha = 0.125;  // шаг метода 
 

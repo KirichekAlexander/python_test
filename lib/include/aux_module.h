@@ -7,6 +7,8 @@
 #include <vector>
 
 
+const double pi = std::acos(-1.0); // число Pi
+
 using Vec = std::vector<double>; // синоним для вещественного вектора
 
 
