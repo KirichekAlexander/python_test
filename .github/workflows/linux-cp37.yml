@@ -21,13 +21,10 @@ jobs:
 
             $PY -V
 
-            # pip 24.1+ не поддерживает Python 3.7
             $PIP install -U "pip<24.1" wheel build "ninja>=1.5"
 
-            # pybind11 3.x может не поддерживать Python 3.7
             $PIP install -U "pybind11<3.0"
 
-            # scikit-build-core 0.11+ требует Python >= 3.8
             $PIP install -U "scikit-build-core<0.11"
 
             cd /io

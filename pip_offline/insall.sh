@@ -1,0 +1,1 @@
+sudo python3.7 get-pip.py --no-index --find-links . "pip==24.0"

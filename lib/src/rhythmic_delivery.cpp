@@ -159,7 +159,7 @@ UniformityIterResult solve_rhythmic_delivery_uniform_pg(Vec const& p, double V0,
 //
 
 
-// реализация прямого метода
+// реализация прямого метода(средние поставки)
 DeliveryResult solve_rhythmic_delivery_bounds_direct(Vec const& p, double V0, double minV, double maxV) {
 
     const size_t n = p.size(); // количество тактов
@@ -167,12 +167,13 @@ DeliveryResult solve_rhythmic_delivery_bounds_direct(Vec const& p, double V0, do
     Vec vecV(n, 0.0);          // вектор объёма ресурса на складе
 
     bool ok = (V0 >= minV && V0 <= maxV); // флаг того, что критерий изначально выполнялся
+    double meanV = 0.5 * (minV + maxV);   // средний объём
     double curV = V0;                     // текущий объём
 
     for (size_t t = 0; t < n; ++t) {
 
-        // вычисление минимальной поставки, чтобы не выйти за нижнюю границу
-        const double need = minV - (curV - p[t]);
+        // вычисление средние поставки, чтобы придерживаться среднего уровня
+        const double need = meanV - (curV - p[t]);
         x[t] = std::max(0.0, need);               
         //
 
