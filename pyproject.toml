@@ -3,7 +3,7 @@ requires = ["scikit-build-core", "pybind11"]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "rhythmic-delivery"
+name = "calc-module"
 version = "0.1.0"
 requires-python = ">=3.7"
 
@@ -11,4 +11,4 @@ requires-python = ">=3.7"
 [tool.cibuildwheel]
 build = "cp312-*"
 skip = "pp*"
-test-command = "python -c \"import rhythmic_delivery as rd; r=rd.solve([3.0,4.0,2.0],10.0,0.0,20.0); assert r.ok\""
+test-command = "python -c \"import calc_module as cm; r=cm.solve([3.0,4.0,2.0],10.0,0.0,20.0); assert r.ok\""

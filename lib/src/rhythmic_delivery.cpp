@@ -2,7 +2,7 @@
 
 // реализация конструкторов для результатов
 
-DeliveryResult::DeliveryResult(Vec const& x, Vec const& V, bool ok) 
+DeliveryResult::DeliveryResult(Vecr const& x, Vecr const& V, bool ok) 
     : x(x)
     , V(V)
     , ok(ok)
@@ -10,7 +10,7 @@ DeliveryResult::DeliveryResult(Vec const& x, Vec const& V, bool ok)
 }
 
 
-UniformityIterResult::UniformityIterResult(Vec const& x, Vec const& V, bool ok, double Mp, int maxIter, int iters) 
+UniformityIterResult::UniformityIterResult(Vecr const& x, Vecr const& V, bool ok, double Mp, int maxIter, int iters) 
     : DeliveryResult(x, V, ok)
     , Mp(Mp)
     , maxIter(maxIter)
@@ -23,7 +23,7 @@ UniformityIterResult::UniformityIterResult(Vec const& x, Vec const& V, bool ok, 
 
 // реализация итерационного метода 
 
-void clamp_vec(Vec& vec, Vec const& lb, Vec const& ub) {
+void clamp_vec(Vecr& vec, Vecr const& lb, Vecr const& ub) {
 
     size_t vec_sz = vec.size();
     for (size_t i = 0; i < vec_sz; ++i) {
@@ -36,12 +36,12 @@ void clamp_vec(Vec& vec, Vec const& lb, Vec const& ub) {
 }
 
 
-UniformityIterResult solve_rhythmic_delivery_uniform_pg(Vec const& p, double V0, double minV, double maxV) {
+UniformityIterResult solve_rhythmic_delivery_uniform_pg(Vecr const& p, double V0, double minV, double maxV) {
 
     const size_t n = p.size(); // количество тактов поставок
 
-    Vec lb(n, 0.0); // вектор нижних границ
-    Vec ub(n, 0.0); // вектор верхних границ
+    Vecr lb(n, 0.0); // вектор нижних границ
+    Vecr ub(n, 0.0); // вектор верхних границ
 
     double s = 0.0; // сумма поставок из РС потребителям
     
@@ -76,7 +76,7 @@ UniformityIterResult solve_rhythmic_delivery_uniform_pg(Vec const& p, double V0,
 
     // код метода
     // сделаем начальное приближение
-    Vec y(n, 0.0);
+    Vecr y(n, 0.0);
     for (size_t t = 0; t < n; ++t) {
 
         // y[t] = (t + 1.0) * Mp; // для задачи из статьи идеальное начальное приближение
@@ -85,9 +85,9 @@ UniformityIterResult solve_rhythmic_delivery_uniform_pg(Vec const& p, double V0,
     }
     clamp_vec(y, lb, ub); // проецирование на множество lb[t]<=y[t]<=ub[t]
 
-    Vec r(n, 0.0);  // r[t] = x[t] - Mp
-    Vec g(n, 0.0);  // градиент F(y) grad(F)[t] = g[t] = 2r[t] - 2r[t+1] или 2r[n]
-    Vec new_y(n, 0.0); // новое приближение
+    Vecr r(n, 0.0);  // r[t] = x[t] - Mp
+    Vecr g(n, 0.0);  // градиент F(y) grad(F)[t] = g[t] = 2r[t] - 2r[t+1] или 2r[n]
+    Vecr new_y(n, 0.0); // новое приближение
 
 
     // градиентный спуск
@@ -126,14 +126,14 @@ UniformityIterResult solve_rhythmic_delivery_uniform_pg(Vec const& p, double V0,
     //
 
     // восстановление x
-    Vec x(n, 0.0);
+    Vecr x(n, 0.0);
     x[0] = y[0];
     for (int t = 1; t < n; ++t) {
         x[t] = y[t] - y[t - 1];
     }
     //
 
-    Vec vecV(n, 0.0); // объёмы склада
+    Vecr vecV(n, 0.0); // объёмы склада
 
 
     // проверка границ
@@ -160,11 +160,11 @@ UniformityIterResult solve_rhythmic_delivery_uniform_pg(Vec const& p, double V0,
 
 
 // реализация прямого метода(средние поставки)
-DeliveryResult solve_rhythmic_delivery_bounds_direct(Vec const& p, double V0, double minV, double maxV) {
+DeliveryResult solve_rhythmic_delivery_bounds_direct(Vecr const& p, double V0, double minV, double maxV) {
 
     const size_t n = p.size(); // количество тактов
-    Vec x(n, 0.0);             // вектор поставок из РЦ в РС
-    Vec vecV(n, 0.0);          // вектор объёма ресурса на складе
+    Vecr x(n, 0.0);             // вектор поставок из РЦ в РС
+    Vecr vecV(n, 0.0);          // вектор объёма ресурса на складе
 
     bool ok = (V0 >= minV && V0 <= maxV); // флаг того, что критерий изначально выполнялся
     double meanV = 0.5 * (minV + maxV);   // средний объём

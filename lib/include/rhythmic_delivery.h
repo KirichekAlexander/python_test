@@ -7,12 +7,12 @@
 // класс результата для прямого метода
 struct DeliveryResult {
 
-    Vec x;     // поставки
-    Vec V;     // склад/ресурс по тактам
+    Vecr x;     // поставки
+    Vecr V;     // склад/ресурс по тактам
     bool ok; // выполнимость 
 
     DeliveryResult()=default;
-    DeliveryResult(Vec const& x, Vec const& V, bool ok);
+    DeliveryResult(Vecr const& x, Vecr const& V, bool ok);
 };
 
 
@@ -23,24 +23,24 @@ struct UniformityIterResult : DeliveryResult {
     int iters;       // сколько реально сделали итераций
 
     UniformityIterResult()=default;
-    UniformityIterResult(Vec const& x, Vec const& V, bool ok, double Mp, int maxIter, int iters);
+    UniformityIterResult(Vecr const& x, Vecr const& V, bool ok, double Mp, int maxIter, int iters);
 };
 
 
 // функции для метода проекции градиента
 
 // функция проекции вектора на многомерный куб задаваемый векторами lb, ub
-void clamp_vec(Vec& vec, Vec const& lb, Vec const& ub);
+void clamp_vec(Vecr& vec, Vecr const& lb, Vecr const& ub);
 
 
 // итерационный метод решения задачи о равномерных поставках, критерий: равномерности. PG - проекция градиента
-UniformityIterResult solve_rhythmic_delivery_uniform_pg(Vec const& p, double V0, double minV, double maxV);
+UniformityIterResult solve_rhythmic_delivery_uniform_pg(Vecr const& p, double V0, double minV, double maxV);
 
 //
 
 
 
 // прямой метод решения задачи о равномерных поставках, критерий: содержание объёма ресурса в границах объёма склада
-DeliveryResult solve_rhythmic_delivery_bounds_direct(Vec const& p, double V0, double minV, double maxV);
+DeliveryResult solve_rhythmic_delivery_bounds_direct(Vecr const& p, double V0, double minV, double maxV);
 
 #endif

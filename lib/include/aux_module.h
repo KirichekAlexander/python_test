@@ -2,26 +2,38 @@
 #define AUX_MODULE_H
 
 
-#include <algorithm>
 #include <cmath>
 #include <vector>
+#include <utility>
+#include <random>
+#include <algorithm>
+#include <numeric>
 
 
 const double pi = std::acos(-1.0); // число Pi
 
-using Vec = std::vector<double>; // синоним для вещественного вектора
+using Vecr = std::vector<double>; // синоним для вещественного вектора
+using Matrix = std::vector<Vecr>; // синоним для вещественной матрицы
 
 
-Vec operator-(Vec const& vec1, Vec const& vec2); // оператор вычитания векторов
+
+Vecr operator-(Vecr const& Vec1, Vecr const& Vec2); // оператор вычитания векторов
 
 
-Vec operator*(Vec const& vec, double num); // оператор умножения вектора на число
+Vecr operator*(Vecr const& Vec, double num); // оператор умножения вектора на число
 
 
-Vec operator*(double num, Vec const& vec); // оператор умножения вектора на число
+Vecr operator*(double num, Vecr const& Vec); // оператор умножения вектора на число
 
 
-double lc_norm(Vec const& vec); // l_inf норма
+double lc_norm(Vecr const& Vec); // l_inf норма
+
+using Veci = std::vector<int>;
+using VecVeci = std::vector<Veci>;
+using Pairii = std::pair<int, int>;
+using VecPairii = std::vector<Pairii>;
+using VecVecPairii = std::vector<VecPairii>;
+
 
 
 #endif

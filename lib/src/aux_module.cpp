@@ -2,10 +2,10 @@
 
 
 
-Vec operator-(Vec const& vec1, Vec const& vec2) {
+Vecr operator-(Vecr const& vec1, Vecr const& vec2) {
 
     int vec_sz = vec1.size();
-    Vec res(vec_sz, 0.0);
+    Vecr res(vec_sz, 0.0);
     for(int i = 0; i < vec_sz; ++i) {
         res[i] = vec1[i] - vec2[i];
     }
@@ -14,10 +14,10 @@ Vec operator-(Vec const& vec1, Vec const& vec2) {
 }
 
 
-Vec operator*(Vec const& vec, double num) {
+Vecr operator*(Vecr const& vec, double num) {
 
     int vec_sz = vec.size();
-    Vec res(vec_sz, 0.0);
+    Vecr res(vec_sz, 0.0);
     for(int i = 0; i < vec_sz; ++i) {
         res[i] = vec[i] * num;
     }
@@ -26,17 +26,17 @@ Vec operator*(Vec const& vec, double num) {
 }
 
 
-Vec operator*(double num, Vec const& vec) {
+Vecr operator*(double num, Vecr const& vec) {
     return vec * num;
 }
 
 
-double lc_norm(Vec const& vec) {
+double lc_norm(Vecr const& Vecr) {
 
     double norm = 0.0;
-    int vec_sz = vec.size();
-    for(int i = 0; i < vec_sz; ++i) {
-        norm = std::max(norm, std::abs(vec[i]));
+    int Vecr_sz = Vecr.size();
+    for(int i = 0; i < Vecr_sz; ++i) {
+        norm = std::max(norm, std::abs(Vecr[i]));
     }
     return norm;
 
