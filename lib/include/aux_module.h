@@ -8,6 +8,15 @@
 #include <random>
 #include <algorithm>
 #include <numeric>
+#include <functional>
+#include <queue>
+#include <stdexcept>
+#include <unordered_map>
+#include <limits>
+#include <string>
+
+
+inline constexpr double INF = std::numeric_limits<double>::infinity();
 
 
 const double pi = std::acos(-1.0); // число Pi
@@ -28,6 +37,8 @@ Vecr operator*(double num, Vecr const& Vec); // оператор умножен�
 
 double lc_norm(Vecr const& Vec); // l_inf норма
 
+
+using Vecc = std::vector<char>;
 using Veci = std::vector<int>;
 using VecVeci = std::vector<Veci>;
 using Pairii = std::pair<int, int>;
