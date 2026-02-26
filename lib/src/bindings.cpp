@@ -115,4 +115,13 @@ PYBIND11_MODULE(calc_module, m) {
           py::arg("order") = Veci{},
           py::arg("dynamicW") = false);
 
+    m.def("solve_crew_routing_ga", &solve_with_roads_full_ga,
+          py::arg("requests"),
+          py::arg("workers"),
+          py::arg("tau"),
+          py::arg("roads"),
+          py::arg("params"),
+          py::arg("order") = Veci{},
+          py::arg("dynamicW") = false);
+
 }

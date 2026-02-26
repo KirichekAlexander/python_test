@@ -80,4 +80,16 @@ Solution solve_with_roads(
     bool dynamicW = false
 );
 
+
+Solution solve_with_roads_full_ga(
+    std::vector<RequestInput> const& requests,
+    std::vector<WorkerInput>  const& workers,
+    Vecr const& tau,
+    std::vector<RoadEdge> const& roads,
+    Params const& P,
+    Veci order = {},
+    bool dynamicW = false
+);
+
+
 #endif
