@@ -5,6 +5,8 @@
 
 #include <string>
 #include <vector>
+#include <fstream>
+#include <sstream>
 
 // ============================================================
 // Public API (inputs)
@@ -45,6 +47,11 @@ struct RequestSolution {
     bool feasible = true;
 
     Veci team; // indices of workers in the input workers vector
+    std::string requestCity;   // город заявки (строкой)
+    Veci requestTasks;         // список задач (типы операций)
+
+    std::string teamCity;      // город отправления (город базы)
+    std::vector<std::string> teamNames; // имена работников (по team)
 
     // assignment[workerIndex] = list of operation types assigned to that worker
     // size == workers.size()
@@ -90,6 +97,9 @@ Solution solve_with_roads_full_ga(
     Veci order = {},
     bool dynamicW = false
 );
+
+
+void save_solution_csv(std::string const& filename, Solution const& sol);
 
 
 #endif

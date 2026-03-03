@@ -865,6 +865,10 @@ Solution solve_with_roads(
 
         RequestSolution rs;
         rs.requestId = r.id;
+
+        rs.requestCity  = requestsIn[idx].city;
+        rs.requestTasks = r.tasks;
+
         rs.assignment.assign(K, {});
 
         BestTeamResult best = build_team_bruteforce(r, workers, tau, w, avail, P, dist);
@@ -894,6 +898,12 @@ Solution solve_with_roads(
         for (int j : best.team) avail[j] = finish;
 
         rs.team = best.team;
+
+        rs.teamCity = rs.team.empty() ? "" : workersIn[rs.team[0]].city;
+        rs.teamNames.clear();
+        rs.teamNames.reserve(rs.team.size());
+        for (int j : rs.team) rs.teamNames.push_back(workersIn[j].name);
+
         rs.lc = best.bestLC;
         rs.startTime = start;
         rs.finishTime = finish;
@@ -1012,6 +1022,10 @@ Solution solve_with_roads_full_ga(
 
         RequestSolution rs;
         rs.requestId = r.id;
+
+        rs.requestCity  = requestsIn[idx].city;
+        rs.requestTasks = r.tasks;
+
         rs.assignment.assign(K, {});
 
         int R = (int)r.tasks.size();
@@ -1046,6 +1060,12 @@ Solution solve_with_roads_full_ga(
         for (int j : best.team) avail[j] = finish;
 
         rs.team = best.team;
+
+        rs.teamCity = rs.team.empty() ? "" : workersIn[rs.team[0]].city;
+        rs.teamNames.clear();
+        rs.teamNames.reserve(rs.team.size());
+        for (int j : rs.team) rs.teamNames.push_back(workersIn[j].name);
+
         rs.lc = best.bestLC;
         rs.startTime = start;
         rs.finishTime = finish;
@@ -1057,4 +1077,76 @@ Solution solve_with_roads_full_ga(
     }
 
     return sol;
+}
+
+
+static std::string vec_to_str(Veci const& v) {
+    std::ostringstream oss;
+    oss << "[";
+    for (size_t i = 0; i < v.size(); ++i) {
+        oss << v[i];
+        if (i + 1 < v.size()) oss << ",";
+    }
+    oss << "]";
+    return oss.str();
+}
+
+static std::string join_names(std::vector<std::string> const& v) {
+    std::ostringstream oss;
+    oss << "[";
+    for (size_t i = 0; i < v.size(); ++i) {
+        oss << v[i];
+        if (i + 1 < v.size()) oss << ",";
+    }
+    oss << "]";
+    return oss.str();
+}
+
+static std::string csv_escape(std::string const& s) {
+    bool need = false;
+    for (char c : s) {
+        if (c == ',' || c == '"' || c == '\n' || c == '\r') { need = true; break; }
+    }
+    if (!need) return s;
+
+    std::string out;
+    out.reserve(s.size() + 2);
+    out.push_back('"');
+    for (char c : s) {
+        if (c == '"') out.push_back('"');
+        out.push_back(c);
+    }
+    out.push_back('"');
+    return out;
+}
+
+void save_solution_csv(std::string const& filename, Solution const& sol) {
+    std::ofstream out(filename, std::ios::binary);
+    if (!out) throw std::runtime_error("Cannot open file for writing: " + filename);
+
+    out << "id,tasks,request_city,team,team_city,team_names,LC,start,finish,op_time\n";
+
+    for (auto const& rs : sol.perRequest) {
+        std::string tasks = vec_to_str(rs.requestTasks);
+        std::string team  = vec_to_str(rs.team);
+        std::string names = join_names(rs.teamNames);
+
+        double op_time = INF;
+        if (rs.feasible && rs.finishTime < INF && rs.t2Hours < INF) {
+            op_time = rs.finishTime - rs.startTime - 2.0 * rs.t2Hours;
+        }
+
+        out
+          << rs.requestId << ","
+          << csv_escape(tasks) << ","
+          << csv_escape(rs.requestCity) << ","
+          << csv_escape(team) << ","
+          << csv_escape(rs.teamCity) << ","
+          << csv_escape(names) << ","
+          << rs.lc << ","
+          << rs.startTime << ","
+          << rs.finishTime << ","
+          << (op_time >= INF/2 ? std::string("") : std::to_string(op_time))
+          << "\n";
+    }
 }

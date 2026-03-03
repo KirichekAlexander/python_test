@@ -95,6 +95,10 @@ PYBIND11_MODULE(calc_module, m) {
         .def_readonly("requestId",  &RequestSolution::requestId)
         .def_readonly("feasible",   &RequestSolution::feasible)
         .def_readonly("team",       &RequestSolution::team)
+        .def_readonly("requestCity",  &RequestSolution::requestCity)
+        .def_readonly("requestTasks", &RequestSolution::requestTasks)
+        .def_readonly("teamCity",     &RequestSolution::teamCity)
+        .def_readonly("teamNames",    &RequestSolution::teamNames)
         .def_readonly("assignment", &RequestSolution::assignment)
         .def_readonly("lc",         &RequestSolution::lc)
         .def_readonly("startTime",  &RequestSolution::startTime)
@@ -123,5 +127,8 @@ PYBIND11_MODULE(calc_module, m) {
           py::arg("params"),
           py::arg("order") = Veci{},
           py::arg("dynamicW") = false);
+
+    m.def("save_crew_routing_solution_csv", &save_solution_csv,
+      py::arg("filename"), py::arg("solution"));
 
 }

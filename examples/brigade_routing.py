@@ -53,7 +53,7 @@ def main():
         mk_request(7, "Волгоград",    [0, 2]),
         mk_request(8, "Краснодар",    [1, 2]),
         mk_request(9, "Ростов",       [0, 1]),
-        mk_request(9, "Иркутск",      [0, 1]),
+        mk_request(10, "Иркутск",      [0, 1]),
     ]
 
     params = cm.CrewParams()
@@ -72,6 +72,7 @@ def main():
                                    False     # динамическая важность
                                    ) # генетический алгоритм
     sol = cm.solve_crew_routing(requests, workers, tau, roads, params, order, False)    # прямой перебор
+    cm.save_crew_routing_solution_csv("out_csv.csv", sol)
 
     for rs in sol.perRequest:
         print(f"Заявка id={rs.requestId} | выполнима={'да' if rs.feasible else 'нет'}")
