@@ -119,6 +119,11 @@ PYBIND11_MODULE(calc_module, m) {
           py::arg("order") = Veci{},
           py::arg("dynamicW") = false);
 
+    py::enum_<GAObjective>(m, "GAObjective")
+    .value("LC", GAObjective::LC)
+    .value("FINISH", GAObjective::FINISH)
+    .value("DURATION", GAObjective::DURATION);
+
     m.def("solve_crew_routing_ga", &solve_with_roads_full_ga,
           py::arg("requests"),
           py::arg("workers"),
@@ -126,9 +131,20 @@ PYBIND11_MODULE(calc_module, m) {
           py::arg("roads"),
           py::arg("params"),
           py::arg("order") = Veci{},
-          py::arg("dynamicW") = false);
+          py::arg("dynamicW") = false,
+          py::arg("objective") = GAObjective::LC);
+    
+    m.def("solve_crew_routing_free", &solve_with_roads_greedy_free,
+      py::arg("requests"),
+      py::arg("workers"),
+      py::arg("tau"),
+      py::arg("roads"),
+      py::arg("params"),
+      py::arg("order") = Veci{},
+      py::arg("dynamicW") = false);
 
     m.def("save_crew_routing_solution_csv", &save_solution_csv,
       py::arg("filename"), py::arg("solution"));
+
 
 }

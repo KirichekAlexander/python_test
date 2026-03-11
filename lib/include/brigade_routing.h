@@ -88,7 +88,26 @@ Solution solve_with_roads(
 );
 
 
+enum class GAObjective {
+    LC = 0,        // минимизация LC
+    FINISH = 1,     // минимизация времени завершения заявки: finish = start + 2*t2 + top
+    DURATION = 2
+};
+
+
 Solution solve_with_roads_full_ga(
+    std::vector<RequestInput> const& requests,
+    std::vector<WorkerInput>  const& workers,
+    Vecr const& tau,
+    std::vector<RoadEdge> const& roads,
+    Params const& P,
+    Veci order = {},
+    bool dynamicW = false,
+    GAObjective objective = GAObjective::LC
+);
+
+
+Solution solve_with_roads_greedy_free(
     std::vector<RequestInput> const& requests,
     std::vector<WorkerInput>  const& workers,
     Vecr const& tau,

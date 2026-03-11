@@ -1,5 +1,6 @@
 #include "brigade_routing.h"
 
+#include <iostream>
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -243,8 +244,6 @@ static FullGAResult solve_request_full_ga(
     Vecr const& avail,
     Params const& P,
     DistCache& dist,
-    int populationSize = 120,
-    int generations = 300,
     double mutationProbAssign = 0.10,
     double mutationProbCity = 0.08
 ) {
@@ -270,9 +269,13 @@ static FullGAResult solve_request_full_ga(
     std::vector<double> distKmByG;
     std::vector<double> t2ByG;
 
-    for (auto const& kv : byCity) {
-        int cityId = kv.first;
-        Veci const& gw = kv.second;
+    std::vector<int> cityIds;
+    cityIds.reserve(byCity.size());
+    for (auto const& kv : byCity) cityIds.push_back(kv.first);
+    std::sort(cityIds.begin(), cityIds.end());
+
+    for (int cityId : cityIds) {
+        Veci const& gw = byCity[cityId];
 
         if ((int)gw.size() > R) {
             // Необязательно отбрасывать: можно использовать подмножество.
@@ -307,8 +310,44 @@ static FullGAResult solve_request_full_ga(
 
     if (candidateCities.empty()) return res;
 
+
+    int G = (int)eligibleAll.size();
+
+    // Eeff = среднее по операциям от max eligible по городам
+    double sumMaxEt = 0.0;
+    for (int tpos = 0; tpos < R; ++tpos) {
+        int mx = 0;
+        for (int g = 0; g < G; ++g) {
+            mx = std::max(mx, (int)eligibleAll[g][tpos].size());
+        }
+        sumMaxEt += (double)mx;
+    }
+    double Eeff = sumMaxEt / (double)R;
+
+    auto clampi = [](int x, int lo, int hi) { return std::max(lo, std::min(hi, x)); };
+
+    double lgG = std::log2((double)G + 1.0);
+    double lgE = std::log2(Eeff + 1.0);
+
+    // --- новая формула ---
+    // pop делаем ощутимо шире по lgE и R
+    int populationSize = (int)std::round(12 + 4.0*R + 10.0*lgE + 6.0*lgG);
+
+    // gen растим умеренно (меньше акцент, чем на pop)
+    int generations    = (int)std::round(25 + 6.0*R + 8.0*lgE);
+
+    // stall как доля от gen
+    int max_stall      = (int)std::round(generations * 0.40);
+
+    // clamp'ы (подними верхние границы)
+    populationSize = clampi(populationSize, 20, 200);
+    generations    = clampi(generations,    30, 200);
+    max_stall      = clampi(max_stall,      10, 100);
+
+
     // --- RNG ---
-    std::mt19937 rng((unsigned)std::random_device{}());
+    constexpr uint32_t GA_SEED = 123456u;   // выбери любое число
+    std::mt19937 rng(GA_SEED);
     std::uniform_real_distribution<double> U01(0.0, 1.0);
 
     // --- Chromosome ---
@@ -331,61 +370,59 @@ static FullGAResult solve_request_full_ga(
 
     auto repair_for_city = [&](Individual& ind) {
         if (ind.gidx < 0 || ind.gidx >= (int)eligibleAll.size()) return;
+        auto const& gw = cityWorkers[ind.gidx];
         auto const& eligible = eligibleAll[ind.gidx];
         if ((int)ind.chrom.size() != R) ind.chrom.assign(R, 0);
+
         for (int tpos = 0; tpos < R; ++tpos) {
-            bool valid = false;
-            for (int loc : eligible[tpos]) {
-                if (loc == ind.chrom[tpos]) { valid = true; break; }
-            }
-            if (!valid) {
-                ind.chrom[tpos] = random_choice(eligible[tpos]);
-            }
+            int op = r.tasks[tpos];
+            int loc = ind.chrom[tpos];
+
+            bool valid = (0 <= loc && loc < (int)gw.size() && workers[ gw[loc] ].can[op]);
+            if (!valid) ind.chrom[tpos] = random_choice(eligible[tpos]);
         }
     };
 
-    auto eval = [&](Individual& ind) {
-        ind.lc = INF;
-        ind.top = INF;
 
+    std::vector<int> assignGlobalBuf(R);
+    Veci teamBuf;
+    teamBuf.reserve(std::min(R, K));
+
+    std::vector<int> mark(K, -1);
+    int stamp = 0;
+    auto eval = [&](Individual& ind) {
+        ind.lc = INF; ind.top = INF;
         if (ind.gidx < 0 || ind.gidx >= (int)candidateCities.size()) return;
         if ((int)ind.chrom.size() != R) return;
 
         auto const& gw = cityWorkers[ind.gidx];
 
-        // local -> global assign
-        std::vector<int> assignGlobal(R, -1);
+        // fill assignGlobalBuf without allocation
         for (int tpos = 0; tpos < R; ++tpos) {
             int loc = ind.chrom[tpos];
             if (loc < 0 || loc >= (int)gw.size()) return;
-            assignGlobal[tpos] = gw[loc];
+            assignGlobalBuf[tpos] = gw[loc];
         }
 
-        // team = unique workers from assignGlobal
-        std::vector<char> used(K, 0);
-        Veci team;
-        team.reserve(std::min(R, (int)gw.size()));
-        for (int j : assignGlobal) {
-            if (!used[j]) {
-                used[j] = 1;
-                team.push_back(j);
+        // build teamBuf using mark+stamp
+        stamp++;
+        teamBuf.clear();
+        for (int j : assignGlobalBuf) {
+            if (mark[j] != stamp) {
+                mark[j] = stamp;
+                teamBuf.push_back(j);
             }
         }
-
-        if (team.empty()) return;
-        if ((int)team.size() > R) return;
+        if (teamBuf.empty() || (int)teamBuf.size() > R) return;
 
         double top = INF;
         double lc = compute_LC_for_fixed_assignment(
-            r, team, assignGlobal, workers, tau, w, avail, P, t2ByG[ind.gidx], top
+            r, teamBuf, assignGlobalBuf, workers, tau, w, avail, P, t2ByG[ind.gidx], top
         );
         if (!(lc < INF)) return;
+        lc += 1e-6 * (double)teamBuf.size();
 
-        // tiny regularizer: prefer slightly smaller teams if LC equal-ish
-        lc += 1e-6 * (double)team.size();
-
-        ind.lc = lc;
-        ind.top = top;
+        ind.lc = lc; ind.top = top;
     };
 
     auto make_random_ind = [&]() {
@@ -458,32 +495,27 @@ static FullGAResult solve_request_full_ga(
         return best;
     };
 
-    auto crossover_mutate = [&](Individual const& a, Individual const& b) {
+    auto crossover_mutate = [&](Individual const& a, Individual const& b) { 
         Individual child;
         child.chrom.resize(R);
 
-        // inherit city
+        // 1) inherit city
         child.gidx = (U01(rng) < 0.5 ? a.gidx : b.gidx);
 
-        // crossover assignments (before repair)
-        if (R == 1) {
-            child.chrom[0] = (U01(rng) < 0.5 ? a.chrom[0] : b.chrom[0]);
-        } else {
-            std::uniform_int_distribution<int> cutDist(1, R - 1);
-            int cut = cutDist(rng);
-            for (int t = 0; t < cut; ++t) child.chrom[t] = a.chrom[t];
-            for (int t = cut; t < R; ++t) child.chrom[t] = b.chrom[t];
+        // 2) uniform crossover assignments (before repair)
+        for (int tpos = 0; tpos < R; ++tpos) {
+            child.chrom[tpos] = (U01(rng) < 0.5 ? a.chrom[tpos] : b.chrom[tpos]);
         }
 
-        // mutate city
+        // 3) mutate city
         if (U01(rng) < mutationProbCity) {
             child.gidx = random_gidx();
         }
 
-        // repair because city may have changed
+        // 4) repair because city may have changed (or genes may be invalid)
         repair_for_city(child);
 
-        // mutate assignments within chosen city
+        // 5) mutate assignments within chosen city
         auto const& eligible = eligibleAll[child.gidx];
         for (int tpos = 0; tpos < R; ++tpos) {
             if (U01(rng) < mutationProbAssign) {
@@ -516,8 +548,12 @@ static FullGAResult solve_request_full_ga(
         next.reserve(populationSize);
 
         // elitism
-        next.push_back(pop[0]);
-        next.push_back(pop[1]);
+        int elite = std::max(4, populationSize / 10);
+        elite = std::min(elite, populationSize);
+
+        for (int i = 0; i < elite; ++i) {
+            next.push_back(pop[i]);
+        }
 
         while ((int)next.size() < populationSize) {
             int ia = select_tournament(pop);
@@ -531,7 +567,7 @@ static FullGAResult solve_request_full_ga(
         if (pop[0].lc + 1e-12 < bestSeen) { bestSeen = pop[0].lc; stall = 0; }
         else stall++;
 
-        if (stall >= 40) break; // например 40
+        if (stall >= max_stall) break; // например 40
     }
 
     // --- decode best ---
@@ -569,6 +605,333 @@ static FullGAResult solve_request_full_ga(
     res.bestTop = top;
     res.bestDistKm = distKmByG[best.gidx];
     res.bestT2Hours = t2ByG[best.gidx];
+    return res;
+}
+
+
+// GA ver_2: for each candidate city run GA on assignments (fixed city), pick best LC.
+static FullGAResult solve_request_full_ga_ver_2(
+    Request const& r,
+    std::vector<Worker> const& workers,
+    Vecr const& tau,
+    Vecr const& w,
+    Vecr const& avail,
+    Params const& P,
+    DistCache& dist,
+    double mutationProbAssign = 0.10,
+    GAObjective objective = GAObjective::LC
+) {
+    FullGAResult res;
+
+    const int R = (int)r.tasks.size();
+    const int K = (int)workers.size();
+    if (R <= 0 || K <= 0) return res;
+
+    // --- Group workers by city ---
+    std::unordered_map<int, Veci> byCity;
+    byCity.reserve((size_t)K * 2);
+    for (int j = 0; j < K; ++j) byCity[workers[j].cityId].push_back(j);
+
+    // deterministic city iteration (important for reproducibility)
+    std::vector<int> cityIds;
+    cityIds.reserve(byCity.size());
+    for (auto const& kv : byCity) cityIds.push_back(kv.first);
+    std::sort(cityIds.begin(), cityIds.end());
+
+    // --- Build candidate cities and eligible lists ---
+    std::vector<int> candidateCities; // real cityId
+    std::vector<Veci> cityWorkers;    // global worker indices in that city
+    std::vector<std::vector<std::vector<int>>> eligibleAll; // [gidx][tpos] -> local worker ids
+    std::vector<double> distKmByG;
+    std::vector<double> t2ByG;
+
+    for (int cityId : cityIds) {
+        Veci const& gw = byCity[cityId];
+
+        double distKm = dist.get_km(cityId, r.cityId);
+        if (!(distKm < INF)) continue;
+
+        double t2h = distKm / P.speed_kmph;
+        if (!(t2h < INF)) continue;
+
+        std::vector<std::vector<int>> eligible(R);
+        bool ok = true;
+        for (int tpos = 0; tpos < R; ++tpos) {
+            int op = r.tasks[tpos];
+            for (int local = 0; local < (int)gw.size(); ++local) {
+                int j = gw[local];
+                if (workers[j].can[op]) eligible[tpos].push_back(local);
+            }
+            if (eligible[tpos].empty()) { ok = false; break; }
+        }
+        if (!ok) continue;
+
+        candidateCities.push_back(cityId);
+        cityWorkers.push_back(gw);
+        eligibleAll.push_back(std::move(eligible));
+        distKmByG.push_back(distKm);
+        t2ByG.push_back(t2h);
+    }
+
+    if (candidateCities.empty()) return res;
+
+    // --- RNG (fixed seed if you want determinism) ---
+    constexpr uint32_t GA_SEED = 123456u;
+    std::mt19937 rng(GA_SEED);
+    std::uniform_real_distribution<double> U01(0.0, 1.0);
+
+    auto random_choice = [&](std::vector<int> const& v) -> int {
+        std::uniform_int_distribution<int> d(0, (int)v.size() - 1);
+        return v[d(rng)];
+    };
+
+    struct IndCity {
+        std::vector<int> chrom; // chrom[tpos] = local worker index
+        double fitness = INF;   // то, что минимизируем (LC или finish)
+        double lc = INF;        // LC (всегда считаем для отчёта)
+        double top = INF;       // t_op
+    };
+
+    auto solve_one_city = [&](int gidx) -> IndCity {
+        IndCity bestOut;
+        auto const& gw = cityWorkers[gidx];
+        auto const& eligible = eligibleAll[gidx];
+
+        // if too few tasks for too many workers: ok, team = used workers only
+        if (R <= 0) return bestOut;
+
+        auto eval_city = [&](IndCity& ind) {
+            ind.fitness = INF;
+            ind.lc = INF;
+            ind.top = INF;
+            if ((int)ind.chrom.size() != R) return;
+
+            // local->global assignment
+            std::vector<int> assignGlobal(R, -1);
+            for (int tpos = 0; tpos < R; ++tpos) {
+                int loc = ind.chrom[tpos];
+                if (loc < 0 || loc >= (int)gw.size()) return;
+                assignGlobal[tpos] = gw[loc];
+            }
+
+            // team = unique workers in assignment
+            std::vector<char> used(K, 0);
+            Veci team;
+            team.reserve(std::min(R, (int)gw.size()));
+            for (int j : assignGlobal) {
+                if (!used[j]) { used[j] = 1; team.push_back(j); }
+            }
+            if (team.empty()) return;
+            if ((int)team.size() > R) return;
+
+            double top = INF;
+            double lc = compute_LC_for_fixed_assignment(
+                r, team, assignGlobal, workers, tau, w, avail, P, t2ByG[gidx], top
+            );
+            if (!(lc < INF)) return;
+
+            // start/finish для временной цели
+            double start = 0.0;
+            for (int j : team) start = std::max(start, avail[j]);
+
+            // tiny regularizer: предпочтение меньшей команды при равенстве
+            double reg = 1e-6 * (double)team.size();
+
+            ind.lc = lc;
+            ind.top = top;
+            double duration = 2.0 * t2ByG[gidx] + top;
+            double finish   = start + duration;
+
+            if (objective == GAObjective::LC) ind.fitness = lc + reg;
+            else if (objective == GAObjective::FINISH) ind.fitness = finish + reg;
+            else ind.fitness = duration + reg;
+        };
+
+        auto make_random = [&]() {
+            IndCity ind;
+            ind.chrom.resize(R);
+            for (int tpos = 0; tpos < R; ++tpos)
+                ind.chrom[tpos] = random_choice(eligible[tpos]);
+            eval_city(ind);
+            return ind;
+        };
+
+        auto make_greedy = [&]() {
+            IndCity ind;
+            ind.chrom.assign(R, -1);
+            std::vector<double> localLoad(gw.size(), 0.0);
+
+            for (int tpos = 0; tpos < R; ++tpos) {
+                int op = r.tasks[tpos];
+
+                int bestLoc = -1;
+                double bestScore = INF;
+                for (int loc : eligible[tpos]) {
+                    double score = localLoad[loc];
+                    if (score < bestScore) {
+                        bestScore = score;
+                        bestLoc = loc;
+                    }
+                }
+                if (bestLoc < 0) ind.chrom[tpos] = random_choice(eligible[tpos]);
+                else {
+                    ind.chrom[tpos] = bestLoc;
+                    localLoad[bestLoc] += tau[op];
+                }
+            }
+
+            eval_city(ind);
+            return ind;
+        };
+
+        auto repair = [&](IndCity& ind) {
+            if ((int)ind.chrom.size() != R) ind.chrom.assign(R, 0);
+            for (int tpos = 0; tpos < R; ++tpos) {
+                int op = r.tasks[tpos];
+                int loc = ind.chrom[tpos];
+                bool valid = (0 <= loc && loc < (int)gw.size() && workers[gw[loc]].can[op]);
+                if (!valid) ind.chrom[tpos] = random_choice(eligible[tpos]);
+            }
+        };
+
+        auto crossover_mutate = [&](IndCity const& a, IndCity const& b) {
+            IndCity child;
+            child.chrom.resize(R);
+
+            // uniform crossover
+            for (int tpos = 0; tpos < R; ++tpos)
+                child.chrom[tpos] = (U01(rng) < 0.5 ? a.chrom[tpos] : b.chrom[tpos]);
+
+            // mutate assignments
+            for (int tpos = 0; tpos < R; ++tpos) {
+                if (U01(rng) < mutationProbAssign) {
+                    child.chrom[tpos] = random_choice(eligible[tpos]);
+                }
+            }
+
+            repair(child);
+            eval_city(child);
+            return child;
+        };
+
+        auto better = [](IndCity const& a, IndCity const& b) { return a.fitness < b.fitness; };
+
+        auto select_tournament = [&](std::vector<IndCity> const& pop, int k = 3) {
+            std::uniform_int_distribution<int> d(0, (int)pop.size() - 1);
+            int best = d(rng);
+            for (int i = 1; i < k; ++i) {
+                int c = d(rng);
+                if (pop[c].fitness < pop[best].fitness) best = c;
+            }
+            return best;
+        };
+
+        // init population
+        double Eavg = 0.0;
+        int Emax = 0;
+        for (int tpos = 0; tpos < R; ++tpos) {
+            int e = (int)eligible[tpos].size();
+            Eavg += (double)e;
+            Emax = std::max(Emax, e);
+        }
+        Eavg /= (double)R;
+
+        double lgE = std::log2(Eavg + 1.0);
+        double lgM = std::log2((double)Emax + 1.0);
+
+        // pop растёт сильнее
+        int populationSize = (int)std::round(20 + 6.0*R + 14.0*lgE + 6.0*lgM);
+        // gen растёт слабее
+        int generations = (int)std::round(30 + 5.0*R + 6.0*lgE);
+        auto clampi = [](int x, int lo, int hi) { return std::max(lo, std::min(hi, x)); };
+
+        populationSize = clampi(populationSize, 20, 200);
+        generations = clampi(generations, 30, 160);
+        int max_stall = clampi((int)std::round(generations * 0.40), 10, 80);
+
+        std::vector<IndCity> pop;
+        pop.reserve(populationSize);
+
+        // more greedy seeds help
+        int greedyCnt = std::min(6, populationSize);
+        for (int i = 0; i < greedyCnt; ++i) pop.push_back(make_greedy());
+        while ((int)pop.size() < populationSize) pop.push_back(make_random());
+
+        std::sort(pop.begin(), pop.end(), better);
+
+        // evolve with early stopping
+        int stall = 0;
+        double bestSeen = pop[0].fitness;
+
+        for (int gen = 0; gen < generations; ++gen) {
+            std::vector<IndCity> next;
+            next.reserve(populationSize);
+
+            int elite = std::max(4, populationSize / 10);
+            elite = std::min(elite, populationSize);
+            for (int i = 0; i < elite; ++i) next.push_back(pop[i]);
+
+            while ((int)next.size() < populationSize) {
+                int ia = select_tournament(pop);
+                int ib = select_tournament(pop);
+                next.push_back(crossover_mutate(pop[ia], pop[ib]));
+            }
+
+            std::sort(next.begin(), next.end(), better);
+            pop.swap(next);
+
+            if (pop[0].fitness + 1e-12 < bestSeen) { bestSeen = pop[0].fitness; stall = 0; }
+            else stall++;
+
+            if (stall >= max_stall) break;
+        }
+
+        if (!pop.empty() && pop[0].fitness < INF) bestOut = pop[0];
+        return bestOut;
+    };
+
+    // --- Run GA for each city and pick best LC ---
+    int bestG = -1;
+    IndCity bestInd;
+
+    for (int gidx = 0; gidx < (int)candidateCities.size(); ++gidx) {
+        IndCity cur = solve_one_city(gidx);
+        if (cur.fitness < bestInd.fitness) {
+            bestInd = std::move(cur);
+            bestG = gidx;
+        }
+    }
+
+    if (bestG < 0 || !(bestInd.fitness < INF)) return res;
+
+    // decode best
+    auto const& gw = cityWorkers[bestG];
+
+    std::vector<int> assignGlobal(R, -1);
+    std::vector<char> used(K, 0);
+    Veci team;
+
+    for (int tpos = 0; tpos < R; ++tpos) {
+        int loc = bestInd.chrom[tpos];
+        int j = gw[loc];
+        assignGlobal[tpos] = j;
+        if (!used[j]) { used[j] = 1; team.push_back(j); }
+    }
+
+    // recompute exact LC (without tiny regularizer)
+    double top = INF;
+    double exactLC = compute_LC_for_fixed_assignment(
+        r, team, assignGlobal, workers, tau, w, avail, P, t2ByG[bestG], top
+    );
+    if (!(exactLC < INF)) return res;
+
+    res.feasible = true;
+    res.team = std::move(team);
+    res.bestAssign = std::move(assignGlobal);
+    res.bestLC = exactLC;
+    res.bestTop = top;
+    res.bestDistKm = distKmByG[bestG];
+    res.bestT2Hours = t2ByG[bestG];
     return res;
 }
 
@@ -925,7 +1288,8 @@ Solution solve_with_roads_full_ga(
     std::vector<RoadEdge> const& roads,
     Params const& P,
     Veci order,
-    bool dynamicW
+    bool dynamicW,
+    GAObjective objective
 ) {
     if (P.speed_kmph <= 0.0) throw std::runtime_error("speed_kmph must be > 0");
     int N = (int)tau.size();
@@ -1028,13 +1392,13 @@ Solution solve_with_roads_full_ga(
 
         rs.assignment.assign(K, {});
 
-        int R = (int)r.tasks.size();
-        int pop = (R <= 3 ? 20 : R <= 6 ? 40 : R <= 10 ? 60 : 80);
-        int gen = (R <= 3 ? 40 : R <= 6 ? 80 : R <= 10 ? 120 : 180);
 
-        FullGAResult best = solve_request_full_ga(
-            r, workers, tau, w, avail, P, dist,
-            pop, gen, 0.10, 0.08
+        // FullGAResult best = solve_request_full_ga(
+        //     r, workers, tau, w, avail, P, dist, 0.10, 0.08
+        // );
+
+        FullGAResult best = solve_request_full_ga_ver_2(
+            r, workers, tau, w, avail, P, dist, 0.10, objective
         );
 
         if (!best.feasible || !(best.bestLC < INF) || best.team.empty()) {
@@ -1071,6 +1435,367 @@ Solution solve_with_roads_full_ga(
         rs.finishTime = finish;
         rs.distKm = best.bestDistKm;
         rs.t2Hours = best.bestT2Hours;
+        rs.feasible = true;
+
+        sol.perRequest[idx] = std::move(rs);
+    }
+
+    return sol;
+}
+
+
+// ============================================================
+// Greedy baseline: choose "most free" team (earliest avail) per city,
+// greedy assignment inside team; pick best by earliest finish, tie by LC
+// ============================================================
+
+struct GreedyResult {
+    bool feasible = false;
+    Veci team;                   // global worker indices
+    std::vector<int> assign;      // size R: global worker index per task position
+    double lc = INF;
+    double top = INF;
+    double distKm = INF;
+    double t2Hours = INF;
+};
+
+// Greedy assignment for a fixed city team (global indices in team).
+// Assign each task to eligible worker with minimal current load (tau sum).
+static std::vector<int> greedy_assign_global(
+    Request const& r,
+    Veci const& team,
+    std::vector<Worker> const& workers,
+    Vecr const& tau
+) {
+    const int R = (int)r.tasks.size();
+    const int K = (int)workers.size();
+
+    std::vector<char> inTeam(K, 0);
+    for (int j : team) inTeam[j] = 1;
+
+    std::vector<double> load(K, 0.0);
+    std::vector<int> assign(R, -1);
+
+    for (int tpos = 0; tpos < R; ++tpos) {
+        int op = r.tasks[tpos];
+        int bestJ = -1;
+        double bestLoad = INF;
+
+        for (int j : team) {
+            if (!workers[j].can[op]) continue;
+            if (load[j] < bestLoad) {
+                bestLoad = load[j];
+                bestJ = j;
+            }
+        }
+
+        if (bestJ < 0) return {}; // cannot assign => infeasible for this team
+        assign[tpos] = bestJ;
+        load[bestJ] += tau[op];
+    }
+
+    return assign;
+}
+
+// Build greedy team for a given city: pick workers with smallest avail
+// while ensuring coverage of all operations; team size <= R.
+// Returns empty if can't cover.
+static Veci greedy_team_for_city(
+    Request const& r,
+    Veci const& cityWorkers,      // global indices of workers in this city
+    std::vector<Worker> const& workers,
+    Vecr const& avail
+) {
+    const int R = (int)r.tasks.size();
+    if (R <= 0) return {};
+
+    // sort workers by avail ascending
+    std::vector<int> cand = cityWorkers;
+    std::sort(cand.begin(), cand.end(), [&](int a, int b){
+        if (avail[a] != avail[b]) return avail[a] < avail[b];
+        return a < b;
+    });
+
+    // greedy set cover: add worker if it covers at least one still-uncovered op
+    std::vector<char> need(R, 1); // need[tpos] = 1 if op at tpos not covered yet
+    int remaining = R;
+
+    Veci team;
+    team.reserve(std::min((int)cand.size(), R));
+
+    for (int j : cand) {
+        if ((int)team.size() >= R) break; // cannot exceed R
+
+        bool adds = false;
+        for (int tpos = 0; tpos < R; ++tpos) {
+            if (!need[tpos]) continue;
+            int op = r.tasks[tpos];
+            if (workers[j].can[op]) { adds = true; break; }
+        }
+        if (!adds) continue;
+
+        team.push_back(j);
+
+        // mark covered
+        for (int tpos = 0; tpos < R; ++tpos) {
+            if (!need[tpos]) continue;
+            int op = r.tasks[tpos];
+            if (workers[j].can[op]) {
+                need[tpos] = 0;
+                remaining--;
+            }
+        }
+        if (remaining == 0) break;
+    }
+
+    if (remaining != 0) return {}; // cannot cover all
+    return team;
+}
+
+// Solve one request by greedy baseline across cities.
+static GreedyResult solve_request_greedy_free(
+    Request const& r,
+    std::vector<Worker> const& workers,
+    Vecr const& tau,
+    Vecr const& w,
+    Vecr const& avail,
+    Params const& P,
+    DistCache& dist
+) {
+    GreedyResult best;
+    const int R = (int)r.tasks.size();
+    const int K = (int)workers.size();
+    if (R <= 0 || K <= 0) return best;
+
+    // group workers by city
+    std::unordered_map<int, Veci> byCity;
+    byCity.reserve((size_t)K * 2);
+    for (int j = 0; j < K; ++j) byCity[workers[j].cityId].push_back(j);
+
+    // deterministic iteration order
+    std::vector<int> cityIds;
+    cityIds.reserve(byCity.size());
+    for (auto const& kv : byCity) cityIds.push_back(kv.first);
+    std::sort(cityIds.begin(), cityIds.end());
+
+    for (int cityId : cityIds) {
+        Veci const& cityW = byCity[cityId];
+
+        // routing
+        double distKm = dist.get_km(cityId, r.cityId);
+        if (!(distKm < INF)) continue;
+        double t2 = distKm / P.speed_kmph;
+        if (!(t2 < INF)) continue;
+
+        // build greedy team (most free workers) that covers all ops
+        Veci team = greedy_team_for_city(r, cityW, workers, avail);
+        if (team.empty()) continue;
+
+        // assignment inside team
+        std::vector<int> assign = greedy_assign_global(r, team, workers, tau);
+        if (assign.empty()) continue;
+
+        // remove idle workers (ensure no "bystanders")
+        std::vector<int> cnt(K, 0);
+        for (int tpos = 0; tpos < R; ++tpos) {
+            int j = assign[tpos];
+            if (j >= 0 && j < K) cnt[j]++;
+        }
+        Veci team2;
+        team2.reserve(team.size());
+        for (int j : team) if (cnt[j] > 0) team2.push_back(j);
+        if (team2.empty()) continue;
+
+        // compute LC for this assignment
+        double top = INF;
+        double lc = compute_LC_for_fixed_assignment(
+            r, team2, assign, workers, tau, w, avail, P, t2, top
+        );
+        if (!(lc < INF)) continue;
+
+        // choose best primarily by earliest start (most free), tie by LC, then by finish
+        double start = 0.0;
+        for (int j : team2) start = std::max(start, avail[j]);
+        double finish = start + 2.0 * t2 + top;
+
+        if (!best.feasible) {
+            best.feasible = true;
+            best.team = std::move(team2);
+            best.assign = std::move(assign);
+            best.lc = lc;
+            best.top = top;
+            best.distKm = distKm;
+            best.t2Hours = t2;
+        } else {
+            double bestStart = 0.0;
+            for (int j : best.team) bestStart = std::max(bestStart, avail[j]);
+            double bestFinish = bestStart + 2.0 * best.t2Hours + best.top;
+
+            bool better =
+                (start + 1e-12 < bestStart) ||
+                (std::abs(start - bestStart) <= 1e-12 && lc + 1e-12 < best.lc) ||
+                (std::abs(start - bestStart) <= 1e-12 && std::abs(lc - best.lc) <= 1e-12 && finish + 1e-12 < bestFinish);
+
+            if (better) {
+                best.team = std::move(team2);
+                best.assign = std::move(assign);
+                best.lc = lc;
+                best.top = top;
+                best.distKm = distKm;
+                best.t2Hours = t2;
+            }
+        }
+    }
+
+    return best;
+}
+
+// Public greedy solver (baseline).
+Solution solve_with_roads_greedy_free(
+    std::vector<RequestInput> const& requestsIn,
+    std::vector<WorkerInput>  const& workersIn,
+    Vecr const& tau,
+    std::vector<RoadEdge> const& roads,
+    Params const& P,
+    Veci order,
+    bool dynamicW
+) {
+    if (P.speed_kmph <= 0.0) throw std::runtime_error("speed_kmph must be > 0");
+    int N = (int)tau.size();
+    if (N == 0) throw std::runtime_error("tau is empty");
+
+    // --- build city ids ---
+    std::unordered_map<std::string,int> cityToId;
+    std::vector<std::string> idToCity;
+
+    auto getCityId = [&](std::string const& name) -> int {
+        auto it = cityToId.find(name);
+        if (it != cityToId.end()) return it->second;
+        int id = (int)idToCity.size();
+        cityToId[name] = id;
+        idToCity.push_back(name);
+        return id;
+    };
+
+    for (auto const& e : roads) { getCityId(e.from); getCityId(e.to); }
+    for (auto const& w0 : workersIn) getCityId(w0.city);
+    for (auto const& r0 : requestsIn) getCityId(r0.city);
+
+    int C = (int)idToCity.size();
+    CityGraph g;
+    g.adj.assign(C, {});
+    for (auto const& e : roads) {
+        int u = getCityId(e.from);
+        int v = getCityId(e.to);
+        if (e.km < 0) throw std::runtime_error("Negative road distance is not allowed");
+        add_undirected_edge(g, u, v, e.km);
+    }
+
+    DistCache dist(std::move(g));
+
+    // --- convert workers ---
+    std::vector<Worker> workers;
+    workers.reserve(workersIn.size());
+    for (auto const& wi : workersIn) {
+        Worker wkr;
+        wkr.name = wi.name;
+        wkr.cityId = getCityId(wi.city);
+        wkr.skills = wi.skills;
+        wkr.can.assign(N, 0);
+        for (int op : wi.skills) {
+            if (op < 0 || op >= N) throw std::runtime_error("Worker skill op out of range");
+            wkr.can[op] = 1;
+        }
+        workers.push_back(std::move(wkr));
+    }
+
+    // --- convert requests ---
+    std::vector<Request> reqs;
+    reqs.reserve(requestsIn.size());
+    for (auto const& ri : requestsIn) {
+        Request rq;
+        rq.id = ri.id;
+        rq.cityId = getCityId(ri.city);
+        rq.tasks = ri.tasks;
+        for (int op : rq.tasks) {
+            if (op < 0 || op >= N) throw std::runtime_error("Request task op out of range");
+        }
+        reqs.push_back(std::move(rq));
+    }
+
+    int M = (int)reqs.size();
+    int K = (int)workers.size();
+
+    if (order.empty()) {
+        order.resize(M);
+        for (int i = 0; i < M; ++i) order[i] = i;
+    }
+
+    Vecr w = compute_w(reqs, workers, N);
+    Vecr avail(K, 0.0);
+
+    Solution sol;
+    sol.perRequest.resize(M);
+
+    for (int pos = 0; pos < (int)order.size(); ++pos) {
+        int idx = order[pos];
+        if (idx < 0 || idx >= M) throw std::runtime_error("order contains invalid request index");
+
+        if (dynamicW) {
+            std::vector<Request> remaining;
+            remaining.reserve(order.size() - pos);
+            for (int t = pos; t < (int)order.size(); ++t) remaining.push_back(reqs[order[t]]);
+            w = compute_w(remaining.empty() ? reqs : remaining, workers, N);
+        }
+
+        Request const& r = reqs[idx];
+
+        RequestSolution rs;
+        rs.requestId = r.id;
+
+        // новые поля (город заявки и операции)
+        rs.requestCity  = requestsIn[idx].city;
+        rs.requestTasks = r.tasks;
+
+        rs.assignment.assign(K, {});
+
+        GreedyResult best = solve_request_greedy_free(r, workers, tau, w, avail, P, dist);
+
+        if (!best.feasible || best.team.empty() || !(best.lc < INF)) {
+            rs.feasible = false;
+            rs.lc = INF;
+            rs.startTime = 0.0;
+            rs.finishTime = INF;
+            sol.perRequest[idx] = std::move(rs);
+            continue;
+        }
+
+        // assignment[workerIndex] = list of operation types
+        for (int tpos = 0; tpos < (int)r.tasks.size(); ++tpos) {
+            int op = r.tasks[tpos];
+            int wj = best.assign[tpos];
+            if (wj >= 0) rs.assignment[wj].push_back(op);
+        }
+
+        double start = 0.0;
+        for (int j : best.team) start = std::max(start, avail[j]);
+        double finish = start + 2.0 * best.t2Hours + best.top;
+
+        for (int j : best.team) avail[j] = finish;
+
+        rs.team = best.team;
+
+        // новые поля (город базы и имена)
+        rs.teamCity = rs.team.empty() ? "" : workersIn[rs.team[0]].city;
+        rs.teamNames.clear();
+        rs.teamNames.reserve(rs.team.size());
+        for (int j : rs.team) rs.teamNames.push_back(workersIn[j].name);
+
+        rs.lc = best.lc;
+        rs.startTime = start;
+        rs.finishTime = finish;
+        rs.distKm = best.distKm;
+        rs.t2Hours = best.t2Hours;
         rs.feasible = true;
 
         sol.perRequest[idx] = std::move(rs);
